@@ -1,0 +1,208 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-slate-850: #162032;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer base {
+  /* ─── Anti-zoom & Stable Layout ─────────────────────────────────── */
+  html {
+    /* Prevent font size inflation di iOS Safari saat orientasi berubah */
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Fill-available height agar iOS Safari tidak ada gap */
+    height: -webkit-fill-available;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Disable pinch zoom and double-tap zoom on mobile devices */
+    touch-action: pan-x pan-y;
+    /* Prevent overscroll bounce / rubber-band di iOS */
+    overscroll-behavior: none;
+    /* Stable min-height di iOS Safari */
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    /* Hilangkan highlight biru saat tap di mobile */
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+
+  /* Box-sizing global */
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  /* Ring Aksesibilitas Terpusat */
+  :focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+
+  /* Root container full viewport */
+  #root {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    width: 100%;
+    overflow-x: hidden;
+  }
+}
+
+/* ─── Skeleton Loading Shimmer ────────────────────────────────────── */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.15), transparent);
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Sleek Scrollbar (Presisi untuk Modal & Global) ─────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(203, 213, 225, 0.8); /* slate-300 */
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.8); /* slate-600 */
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8; /* slate-400 */
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b; /* slate-500 */
+}
+
+/* Support Firefox thin scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(203, 213, 225, 0.8) transparent;
+}
+.dark * {
+  scrollbar-color: rgba(71, 85, 105, 0.8) transparent;
+}
+
+.login-grid-mask {
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 100%);
+  mask-image: radial-gradient(ellipse at center, #000 20%, transparent 100%);
+}
+
+/* Custom Scrollbar Helper untuk Modal Body */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #475569;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: #94a3b8;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ─── Animations & Keyframes ──────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-pop-in {
+  animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ─── Modal Layer & Workspace Integration ────────────────────────── */
+.modal-layer {
+  right: var(--dev-panel-right-offset, 0px) !important;
+}
+
+.developer-inspector-layer {
+  isolation: isolate;
+}
+
+/* ─── Custom File Input Styling ───────────────────────────────────── */
+input[type="file"].custom-file-input::-webkit-file-upload-button {
+  visibility: hidden;
+}
+input[type="file"].custom-file-input::before {
+  content: 'Pilih File Excel';
+  display: inline-block;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  outline: none;
+  white-space: nowrap;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  transition: background-color 0.2s ease;
+}
+input[type="file"].custom-file-input:hover::before {
+  background: #1d4ed8;
+}
