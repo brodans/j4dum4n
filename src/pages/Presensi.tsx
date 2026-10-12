@@ -10,7 +10,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, patchExifDimensions, normalizeOrientation,
+  findExifApp1, readOrientation, orient, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
@@ -384,6 +384,7 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
+      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
 
       if (typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
@@ -392,7 +393,7 @@ export default function Presensi() {
 
       let bitmapPromise: Promise<ImageBitmap>;
       try {
-        bitmapPromise = createImageBitmap(file);
+        bitmapPromise = createImageBitmap(file, { imageOrientation: 'none' });
       } catch (err) {
         console.error(err);
         processFileFallback(file, exifSegment);
@@ -407,10 +408,14 @@ export default function Presensi() {
             setFileInfo('❌ Gagal memproses foto.');
             return;
           }
-          const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(width, height));
-          const outW = Math.max(1, Math.round(width * scale));
-          const outH = Math.max(1, Math.round(height * scale));
-          const canvas = downscaleTo(bitmap, width, height, outW, outH);
+          const alreadyUpright = orientation >= 5 && orientation <= 8 && width < height;
+          const oriented = alreadyUpright ? bitmap : orient(bitmap, orientation);
+          const displayWidth = oriented.width;
+          const displayHeight = oriented.height;
+          const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(displayWidth, displayHeight));
+          const outW = Math.max(1, Math.round(displayWidth * scale));
+          const outH = Math.max(1, Math.round(displayHeight * scale));
+          const canvas = downscaleTo(oriented, displayWidth, displayHeight, outW, outH);
           encodePresensi(canvas, exifSegment);
         } finally {
           bitmap.close();
@@ -425,17 +430,18 @@ export default function Presensi() {
   };
 
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+  const isAndroid = /Android/i.test(navigator.userAgent || '');
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const startCamera = async () => {
-    if (isMobile) {
+    if (isMobile && !isAndroid) {
       cameraInputRef.current?.click();
       return;
     }
     
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' } 
+        video: { facingMode: isAndroid ? { exact: 'user' } : 'user' }
       });
       streamRef.current = mediaStream;
       setIsCameraActive(true);
