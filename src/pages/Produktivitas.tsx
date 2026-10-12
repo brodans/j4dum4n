@@ -13,7 +13,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import {
   findExifApp1, readOrientation, patchExifDimensions, normalizeOrientation,
-  stripExifThumbnail, dataUrlToBytes, bytesToDataUrl, insertExifApp1, unorient,
+  stripExifThumbnail, dataUrlToBytes, bytesToDataUrl, insertExifApp1, orient,
 } from '../lib/exif';
 
 // ─────────────────────────────────────────────
@@ -182,6 +182,7 @@ function processPhotoFile(
         if (!exifSegment) return dataUrl;
         try {
           const segment = exifSegment.slice();
+          normalizeOrientation(segment);
           stripExifThumbnail(segment);
           patchExifDimensions(segment, src.width, src.height);
           return bytesToDataUrl(insertExifApp1(dataUrlToBytes(dataUrl), segment), 'image/jpeg');
@@ -247,7 +248,6 @@ function processPhotoFile(
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, w, h);
         }
-        if (exifSegment) normalizeOrientation(exifSegment);
         finish(canvas);
       };
       img.onerror = () => { URL.revokeObjectURL(url); onError('❌ Gagal memproses foto.'); };
@@ -255,13 +255,41 @@ function processPhotoFile(
     };
 
     if (typeof createImageBitmap === 'function') {
-      createImageBitmap(file).then((bitmap) => {
-        // Resolusi native dipertahankan; piksel dikembalikan ke orientasi mentah
-        // agar tag Orientation EXIF tetap sama seperti APK asli.
-        const orientation = exifSegment ? readOrientation(exifSegment) : 1;
-        const canvas = unorient(bitmap, orientation);
-        bitmap.close();
-        finish(canvas);
+      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
+      let bitmapPromise: Promise<ImageBitmap>;
+      try {
+        bitmapPromise = createImageBitmap(file, { imageOrientation: 'none' });
+      } catch (err) {
+        console.error(err);
+        fallback();
+        return;
+      }
+
+      bitmapPromise.then((bitmap) => {
+        try {
+          const width = bitmap.width;
+          const height = bitmap.height;
+          if (!width || !height) {
+            onError('❌ Gagal memproses foto.');
+            return;
+          }
+          const alreadyUpright = orientation >= 5 && orientation <= 8 && width < height;
+          const upright = alreadyUpright ? bitmap : orient(bitmap, orientation);
+          const canvas = document.createElement('canvas');
+          canvas.width = upright.width;
+          canvas.height = upright.height;
+          const context = canvas.getContext('2d');
+          if (!context) {
+            onError('❌ Gagal memproses foto.');
+            return;
+          }
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = 'high';
+          context.drawImage(upright, 0, 0);
+          finish(canvas);
+        } finally {
+          bitmap.close();
+        }
       }).catch((err) => {
         console.error(err);
         fallback();
@@ -329,7 +357,7 @@ const ActiveTaskCard = memo(function ActiveTaskCard({
   const startCamera = async () => {
     if (isMobile) { cameraInputRef.current?.click(); return; }
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
       streamRef.current = mediaStream;
       onSetCameraActive(true);
       setTimeout(() => {
@@ -534,7 +562,7 @@ const ActiveTaskCard = memo(function ActiveTaskCard({
               </div>
             )}
 
-            <input type="file" ref={cameraInputRef} accept="image/*" capture="environment" className="hidden" onChange={handlePhotoChange} />
+            <input type="file" ref={cameraInputRef} accept="image/*" capture="user" className="hidden" onChange={handlePhotoChange} />
             <input type="file" ref={galleryInputRef} accept="image/*" className="hidden" onChange={handlePhotoChange} />
           </div>
 
