@@ -3,7 +3,7 @@ import { Activity, Search, AlertTriangle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { sendRequest } from '../api';
 import DatePicker from '../components/ui/DatePicker';
-import { formatBeautifulDateTime, getTodayWIB, getTodayWIBWithOffset } from '../lib/dateFormatter';
+import { formatBeautifulDateTime, getTodayWIB } from '../lib/dateFormatter';
 import ImageLightbox from '../components/ui/ImageLightbox';
 import { useBackButton } from '../hooks/useBackButton';
 import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
@@ -35,7 +35,7 @@ export default function LogProduktivitas() {
     return () => { cancelled = true; };
   }, [canSearchProduktivitas, pegawaiList.length]);
   
-  const [tglAwal, setTglAwal] = useState(getTodayWIBWithOffset(-1));
+  const [tglAwal, setTglAwal] = useState(() => getTodayWIB());
   const [tglAkhir, setTglAkhir] = useState(getTodayWIB());
   
   const [loading, setLoading] = useState(false);
@@ -44,6 +44,7 @@ export default function LogProduktivitas() {
   const [error, setError] = useState('');
   const [modalImg, setModalImg] = useState<{ src: string; title: string; images?: { src: string; title: string }[]; currentIndex?: number } | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
+  const aktivitasRequestId = React.useRef(0);
 
   // Pre-calculate all images in dataAkt
   const allImages = React.useMemo(() => {
@@ -88,25 +89,33 @@ export default function LogProduktivitas() {
     }
   };
 
-  const fetchAktivitas = async () => {
+  const fetchAktivitas = async (
+    tanggalAwal = tglAwal,
+    tanggalAkhir = tglAkhir,
+    targetPegawaiId = selectedPegawai?.id,
+  ) => {
+    const requestId = ++aktivitasRequestId.current;
     setLoading(true);
     setError('');
     setDataJam(null);
     setDataAkt(null);
     setVisibleCount(50);
     // Jika tidak punya izin search, selalu gunakan id sendiri
-    const effectivePegawai = canSearchProduktivitas ? selectedPegawai : null;
-    const targetIdPegawai = effectivePegawai ? effectivePegawai.id : config.idPegawai;
-    const pJam = { id_pegawai: targetIdPegawai, tgl_awal: tglAwal, tgl_akhir: tglAkhir };
-    const pAkt = { id_pegawai: targetIdPegawai, tgl_mulai: tglAwal, tgl_akhir: tglAkhir };
+    const targetId = canSearchProduktivitas
+      ? (targetPegawaiId || config.idPegawai || pegawai?.id)
+      : (config.idPegawai || pegawai?.id);
+    const pJam = { id_pegawai: targetId, tgl_awal: tanggalAwal, tgl_akhir: tanggalAkhir };
+    const pAkt = { id_pegawai: targetId, tgl_mulai: tanggalAwal, tgl_akhir: tanggalAkhir };
     try {
-      const resJam = await sendRequest("/Tupoksi/ambil_jam_aktifitas", pJam);
-      
+      const [resJam, resAkt] = await Promise.all([
+        sendRequest("/Tupoksi/ambil_jam_aktifitas", pJam),
+        sendRequest("/Tupoksi/ambilDataAktivitas", pAkt),
+      ]);
+      if (requestId !== aktivitasRequestId.current) return;
+
       if (resJam?.success && resJam?.jumlah?.length) {
         setDataJam(resJam.jumlah[0]);
       }
-      
-      const resAkt = await sendRequest("/Tupoksi/ambilDataAktivitas", pAkt);
       
       if (resAkt?.success && resAkt?.data?.length) {
         setDataAkt(resAkt.data);
@@ -114,11 +123,19 @@ export default function LogProduktivitas() {
         setError('Detail aktivitas kosong.');
       }
     } catch (err: any) {
-      setError(`Network Error: ${err.message}`);
+      if (requestId === aktivitasRequestId.current) {
+        setError(`Network Error: ${err.message}`);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === aktivitasRequestId.current) setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!pegawai) return;
+    void fetchAktivitas(tglAwal, tglAkhir, selectedPegawai?.id);
+    return () => { aktivitasRequestId.current += 1; };
+  }, [pegawai?.id, config.idPegawai, tglAwal, tglAkhir, selectedPegawai?.id, canSearchProduktivitas]);
 
   if (!pegawai) {
     return null; // App.tsx auto-redirect ke tabLogin
@@ -239,7 +256,7 @@ export default function LogProduktivitas() {
         <DatePicker label="Tanggal Akhir" value={tglAkhir} onChange={setTglAkhir} />
       </div>
       <button 
-        onClick={fetchAktivitas}
+        onClick={() => { void fetchAktivitas(); }}
         disabled={loading}
         className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl shadow-sm transition-colors mt-6 flex items-center justify-center gap-2"
       >

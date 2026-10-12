@@ -10,7 +10,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, patchExifDimensions, normalizeOrientation,
+  findExifApp1, readOrientation, orient, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
@@ -300,24 +300,8 @@ export default function Presensi() {
   // 320 px dan normalkan EXIF agar server tidak perlu menerapkan orientasi.
   const PRESENSI_LONG_SIDE = 320;
 
-  const ensurePortrait = (source: HTMLCanvasElement) => {
-    if (source.width <= source.height) return source;
-
-    const portrait = document.createElement('canvas');
-    portrait.width = source.height;
-    portrait.height = source.width;
-    const context = portrait.getContext('2d');
-    if (!context) return source;
-    context.translate(portrait.width, 0);
-    context.rotate(Math.PI / 2);
-    context.drawImage(source, 0, 0);
-    return portrait;
-  };
-
   const encodePresensi = (canvas: HTMLCanvasElement, exifSegment: Uint8Array | null) => {
-    const portrait = ensurePortrait(canvas);
-
-    const dataUrl = portrait.toDataURL('image/jpeg', 0.95);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (dataUrl.length < 100) {
       // "data:," → encoder kanvas gagal.
       setFileInfo('❌ Gagal memproses foto.');
@@ -328,7 +312,7 @@ export default function Presensi() {
       try {
         const segment = exifSegment.slice();
         normalizeOrientation(segment);
-        patchExifDimensions(segment, portrait.width, portrait.height);
+        patchExifDimensions(segment, canvas.width, canvas.height);
         finalUrl = bytesToDataUrl(insertExifApp1(dataUrlToBytes(dataUrl), segment), 'image/jpeg');
       } catch (err) {
         console.warn('Gagal menyisipkan EXIF:', err);
@@ -336,7 +320,7 @@ export default function Presensi() {
     }
     const byteLength = Math.round((finalUrl.length * 3) / 4);
     setBase64Image(finalUrl);
-    setFileInfo(`${portrait.width}×${portrait.height} px · ${(byteLength / 1024).toFixed(1)} KB`);
+    setFileInfo(`${canvas.width}×${canvas.height} px · ${(byteLength / 1024).toFixed(1)} KB`);
   };
 
   // Fallback untuk browser tanpa createImageBitmap: gambar dianggap sudah
@@ -384,16 +368,16 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
-      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
 
-      if (isIOS || typeof createImageBitmap !== 'function') {
+      if (typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
         return;
       }
 
       let bitmapPromise: Promise<ImageBitmap>;
       try {
-        bitmapPromise = createImageBitmap(file);
+        bitmapPromise = createImageBitmap(file, { imageOrientation: 'none' });
       } catch (err) {
         console.error(err);
         processFileFallback(file, exifSegment);
@@ -408,10 +392,14 @@ export default function Presensi() {
             setFileInfo('❌ Gagal memproses foto.');
             return;
           }
-          const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(width, height));
-          const outW = Math.max(1, Math.round(width * scale));
-          const outH = Math.max(1, Math.round(height * scale));
-          const canvas = downscaleTo(bitmap, width, height, outW, outH);
+          const alreadyUpright = orientation >= 5 && orientation <= 8 && width < height;
+          const oriented = alreadyUpright ? bitmap : orient(bitmap, orientation);
+          const displayWidth = oriented.width;
+          const displayHeight = oriented.height;
+          const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(displayWidth, displayHeight));
+          const outW = Math.max(1, Math.round(displayWidth * scale));
+          const outH = Math.max(1, Math.round(displayHeight * scale));
+          const canvas = downscaleTo(oriented, displayWidth, displayHeight, outW, outH);
           encodePresensi(canvas, exifSegment);
         } finally {
           bitmap.close();
