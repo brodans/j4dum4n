@@ -10,8 +10,8 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, readOrientation, patchExifDimensions, normalizeOrientation,
-  dataUrlToBytes, bytesToDataUrl, insertExifApp1, unorient, downscaleTo,
+  findExifApp1, patchExifDimensions, normalizeOrientation,
+  dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
 // Helper function to find matching location in dataLokasi
@@ -296,13 +296,16 @@ export default function Presensi() {
   // di-upload APA ADANYA (raw camera JPEG: SELURUH EXIF + thumbnail tetap ada).
   // Karena itu rasio aspek tetap terjaga dan metadata tidak pernah hilang.
   //
-  // Di web: perkecil dengan mempertahankan rasio aspek sampai sisi terpanjang =
-  // 320 px, kembalikan piksel ke orientasi mentah (sesuai sensor), encode JPEG
-  // kualitas 0.95, lalu salin kembali segmen EXIF sumber apa adanya (hanya tag
-  // dimensi piksel yang diperbarui). Hasilnya sama dengan APK asli.
+  // Di web: perkecil piksel yang sudah diputar browser sampai sisi terpanjang
+  // 320 px dan normalkan EXIF agar server tidak perlu menerapkan orientasi.
   const PRESENSI_LONG_SIDE = 320;
 
   const encodePresensi = (canvas: HTMLCanvasElement, exifSegment: Uint8Array | null) => {
+    if (canvas.width >= canvas.height) {
+      setFileInfo('❌ Foto harus potret. Silakan ambil ulang dengan posisi HP tegak.');
+      return;
+    }
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     if (dataUrl.length < 100) {
       // "data:," → encoder kanvas gagal.
@@ -313,6 +316,7 @@ export default function Presensi() {
     if (exifSegment) {
       try {
         const segment = exifSegment.slice();
+        normalizeOrientation(segment);
         patchExifDimensions(segment, canvas.width, canvas.height);
         finalUrl = bytesToDataUrl(insertExifApp1(dataUrlToBytes(dataUrl), segment), 'image/jpeg');
       } catch (err) {
@@ -344,8 +348,6 @@ export default function Presensi() {
       let segment: Uint8Array | null = null;
       if (exifSegment) {
         segment = exifSegment.slice();
-        normalizeOrientation(segment);
-        patchExifDimensions(segment, outW, outH);
       }
       encodePresensi(canvas, segment);
     };
@@ -370,7 +372,6 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
-      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
 
       if (typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
@@ -386,21 +387,13 @@ export default function Presensi() {
           return;
         }
 
-        // Dimensi mentah: untuk orientasi 5–8, browser memutar sehingga lebar
-        // dan tinggi bitmap sudah tertukar dari dimensi sensor.
-        const swap = orientation >= 5 && orientation <= 8;
-        const rawW = swap ? dh : dw;
-        const rawH = swap ? dw : dh;
-        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(rawW, rawH));
-        const outRawW = Math.max(1, Math.round(rawW * scale));
-        const outRawH = Math.max(1, Math.round(rawH * scale));
-        const outDispW = swap ? outRawH : outRawW;
-        const outDispH = swap ? outRawW : outRawH;
+        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(dw, dh));
+        const outW = Math.max(1, Math.round(dw * scale));
+        const outH = Math.max(1, Math.round(dh * scale));
 
-        const display = downscaleTo(bitmap, dw, dh, outDispW, outDispH);
-        const raw = unorient(display, orientation);
+        const display = downscaleTo(bitmap, dw, dh, outW, outH);
         bitmap.close();
-        encodePresensi(raw, exifSegment);
+        encodePresensi(display, exifSegment);
       }).catch((err) => {
         console.error(err);
         processFileFallback(file, exifSegment);
@@ -933,7 +926,7 @@ export default function Presensi() {
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Tarik & lepas foto di sini</p>
-                <p className="text-xs text-slate-400 mt-1">Foto dikompres seperti aplikasi asli: sisi terpanjang 320 px, rasio aspek & EXIF dipertahankan</p>
+                <p className="text-xs text-slate-400 mt-1">Foto wajib potret. Hasil dikompres hingga sisi terpanjang 320 px.</p>
               </div>
             </div>
             <div className="flex justify-center gap-3 flex-wrap">

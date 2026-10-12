@@ -37,11 +37,11 @@ const loadPageModule = (pageId: string): Promise<PageModule> => {
   return promise;
 };
 
-function LazyPage({ pageId }: { pageId: string }) {
+const LazyPage = React.memo(function LazyPage({ pageId }: { pageId: string }) {
   const module = React.use(loadPageModule(pageId));
   const Component = module.default;
   return <Component />;
-}
+});
 
 const lazyPage = (pageId: string): React.ComponentType => () => <LazyPage pageId={pageId} />;
 const Presensi = lazyPage('tabAbsen');

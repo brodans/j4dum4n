@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Database as DatabaseIcon, Search, Copy, Check, X, ChevronDown, User, Phone, Mail, MapPin, BookOpen, Users, Baby, Camera, ZoomIn, RefreshCw } from 'lucide-react';
-import { getBiodataByNip } from '../data/database';
 import type { BiodataRecord } from '../data/database';
 import { loadPegawaiDatabase } from '../lib/pegawaiData';
 import { sendRequest } from '../api';
@@ -40,6 +39,7 @@ export default function Database() {
   const [isOpdModalOpen, setIsOpdModalOpen] = useState(false);
   const [opdSearchQuery, setOpdSearchQuery] = useState('');
   const photoRequestRef = React.useRef<AbortController | null>(null);
+  const biodataRequestRef = React.useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +96,7 @@ export default function Database() {
 
   useEffect(() => () => {
     photoRequestRef.current?.abort();
+    biodataRequestRef.current += 1;
   }, []);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -121,11 +122,21 @@ export default function Database() {
   const handleSelectDetail = (nip: string) => {
     photoRequestRef.current?.abort();
     photoRequestRef.current = new AbortController();
+    const biodataRequest = ++biodataRequestRef.current;
 
     const detail = pegawaiDatabase.find((item: any) => item?.nip === nip) || null;
-    const biodata = getBiodataByNip(nip);
     setSelectedDetailPegawai(detail || null);
-    setSelectedDetailBiodata(biodata || null);
+    setSelectedDetailBiodata(null);
+
+    if (nip) {
+      import('../data/database')
+        .then(({ getBiodataByNip }) => {
+          if (biodataRequest === biodataRequestRef.current) {
+            setSelectedDetailBiodata(getBiodataByNip(nip));
+          }
+        })
+        .catch(error => console.error('Gagal memuat biodata pegawai:', error));
+    }
 
     // Reset photo state and fetch latest presensi photo
     setPegawaiPhoto(null);
@@ -346,7 +357,7 @@ export default function Database() {
                 <User className="w-5 h-5 text-indigo-500" /> Detail Pegawai
               </h3>
               <button
-                onClick={() => { setSelectedDetailPegawai(null); setSelectedDetailBiodata(null); setPegawaiPhoto(null); setPhotoLoading(false); setPhotoError(false); setPhotoMeta(null); setLightboxOpen(false); }}
+                onClick={() => { biodataRequestRef.current += 1; setSelectedDetailPegawai(null); setSelectedDetailBiodata(null); setPegawaiPhoto(null); setPhotoLoading(false); setPhotoError(false); setPhotoMeta(null); setLightboxOpen(false); }}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />

@@ -15,7 +15,4 @@ export const getBiodataByNip = (nip: string): BiodataRecord | null => {
   return dataBiodata[nip] ?? null;
 };
 
-/** Expose raw map kalau perlu iterasi langsung */
-export const getAllBiodata = () => dataBiodata;
-
 export type { BiodataRecord, PasanganRecord, AnakRecord };

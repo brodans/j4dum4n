@@ -204,6 +204,17 @@ function buildTree(searchTerm: string, tipeFilter: string, dataInstansi: DataIns
   });
   kecamatanGrup.children.sort((a, b) => a.kode.localeCompare(b.kode));
 
+  // ── 9b. Grup RSUD Dr. Harjono ───────────────────────────────────────────
+  const rsudGrup = makeSynth('__RSUD_HARJONO__', 'RSUD Dr. Harjono');
+  nodeMap.forEach(node => {
+    if (node.displayNama.toLowerCase().startsWith('rsud dr. harjono')) {
+      node.level = 2;
+      rsudGrup.children.push(node);
+      rsudGrup.totalUnit += node.totalUnit;
+    }
+  });
+  rsudGrup.children.sort((a, b) => a.kode.localeCompare(b.kode));
+
   // ── 10. Tentukan node yang hanya boleh jadi CHILD (tidak boleh jadi root) ──
   const childOnly = new Set<string>();
   nodeMap.forEach((node, kode) => {
@@ -212,7 +223,8 @@ function buildTree(searchTerm: string, tipeFilter: string, dataInstansi: DataIns
       g === 'BAGIAN_SETDA' || g === 'STAF_AHLI' ||
       g === 'DISDIK_KORWIL' || g === 'DISDIK_SD' ||
       g === 'DINKES_PKM' ||
-      g === 'KECAMATAN'
+      g === 'KECAMATAN' ||
+      node.displayNama.toLowerCase().startsWith('rsud dr. harjono')
     ) {
       childOnly.add(kode);
     }
@@ -251,6 +263,11 @@ function buildTree(searchTerm: string, tipeFilter: string, dataInstansi: DataIns
   if (kecamatanGrup.children.length > 0) {
     roots.push(kecamatanGrup);
     addedToRoots.add('__KECAMATAN__');
+  }
+  // 6b. Grup RSUD Dr. Harjono
+  if (rsudGrup.children.length > 0) {
+    roots.push(rsudGrup);
+    addedToRoots.add('__RSUD_HARJONO__');
   }
   // 7. Sisa yang belum masuk dan bukan childOnly
   nodeMap.forEach((node, kode) => {
@@ -1046,19 +1063,23 @@ export default function Unor() {
             </div>
             <div className="flex gap-2 shrink-0">
               <div className="relative">
-                <button onClick={() => setShowFilter(p => !p)}
+                <button type="button" aria-haspopup="menu" aria-expanded={showFilter} onClick={() => setShowFilter(p => !p)}
                   className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer ${activeFilters > 0 ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'}`}>
                   <Filter className="w-4 h-4" /> Filter
                   {activeFilters > 0 && <span className="bg-white text-blue-600 rounded-full w-4 h-4 text-[10px] font-bold flex items-center justify-center">{activeFilters}</span>}
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilter ? 'rotate-180' : ''}`} />
                 </button>
                 {showFilter && (
-                  <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-3 z-20 w-52 space-y-2">
+                  <div role="menu" aria-label="Filter tipe SKPD" className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2 z-20 w-52 space-y-1">
                     <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Tipe SKPD</p>
-                    <select value={tipeFilter} onChange={e => { setTipeFilter(e.target.value); setShowFilter(false); }}
-                      className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer">
-                      <option value="">Semua Tipe</option>
-                      {tipeOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    {tipeOptions.map(t => (
+                      <button key={t} type="button" role="menuitemradio" aria-checked={tipeFilter === t}
+                        onClick={() => { setTipeFilter(current => current === t ? '' : t); setShowFilter(false); }}
+                        className={`w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-sm text-left cursor-pointer transition-colors ${tipeFilter === t ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                        {t}
+                        {tipeFilter === t && <Check className="w-4 h-4" />}
+                      </button>
+                    ))}
                     {activeFilters > 0 && (
                       <button onClick={() => { setTipeFilter(''); setSearch(''); setShowFilter(false); }}
                         className="w-full text-xs text-red-500 hover:text-red-700 font-semibold text-left py-1 cursor-pointer">
