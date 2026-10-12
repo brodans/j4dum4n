@@ -10,7 +10,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, readOrientation, orient, patchExifDimensions, normalizeOrientation,
+  findExifApp1, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
@@ -285,9 +285,9 @@ export default function Presensi() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
-    }
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (file) processFile(file);
   };
 
   // ── Kompresi foto presensi (meniru APK asli bkpsdm_presensi_ponorogo) ──────
@@ -300,13 +300,24 @@ export default function Presensi() {
   // 320 px dan normalkan EXIF agar server tidak perlu menerapkan orientasi.
   const PRESENSI_LONG_SIDE = 320;
 
-  const encodePresensi = (canvas: HTMLCanvasElement, exifSegment: Uint8Array | null) => {
-    if (canvas.width >= canvas.height) {
-      setFileInfo('❌ Foto harus potret. Silakan ambil ulang dengan posisi HP tegak.');
-      return;
-    }
+  const ensurePortrait = (source: HTMLCanvasElement) => {
+    if (source.width <= source.height) return source;
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const portrait = document.createElement('canvas');
+    portrait.width = source.height;
+    portrait.height = source.width;
+    const context = portrait.getContext('2d');
+    if (!context) return source;
+    context.translate(portrait.width, 0);
+    context.rotate(Math.PI / 2);
+    context.drawImage(source, 0, 0);
+    return portrait;
+  };
+
+  const encodePresensi = (canvas: HTMLCanvasElement, exifSegment: Uint8Array | null) => {
+    const portrait = ensurePortrait(canvas);
+
+    const dataUrl = portrait.toDataURL('image/jpeg', 0.95);
     if (dataUrl.length < 100) {
       // "data:," → encoder kanvas gagal.
       setFileInfo('❌ Gagal memproses foto.');
@@ -317,7 +328,7 @@ export default function Presensi() {
       try {
         const segment = exifSegment.slice();
         normalizeOrientation(segment);
-        patchExifDimensions(segment, canvas.width, canvas.height);
+        patchExifDimensions(segment, portrait.width, portrait.height);
         finalUrl = bytesToDataUrl(insertExifApp1(dataUrlToBytes(dataUrl), segment), 'image/jpeg');
       } catch (err) {
         console.warn('Gagal menyisipkan EXIF:', err);
@@ -325,7 +336,7 @@ export default function Presensi() {
     }
     const byteLength = Math.round((finalUrl.length * 3) / 4);
     setBase64Image(finalUrl);
-    setFileInfo(`${canvas.width}×${canvas.height} px · ${(byteLength / 1024).toFixed(1)} KB`);
+    setFileInfo(`${portrait.width}×${portrait.height} px · ${(byteLength / 1024).toFixed(1)} KB`);
   };
 
   // Fallback untuk browser tanpa createImageBitmap: gambar dianggap sudah
@@ -335,25 +346,26 @@ export default function Presensi() {
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const srcW = img.width;
-      const srcH = img.height;
-      if (!srcW || !srcH) {
+      try {
+        const srcW = img.naturalWidth;
+        const srcH = img.naturalHeight;
+        if (!srcW || !srcH) {
+          setFileInfo('❌ Gagal memproses foto.');
+          return;
+        }
+        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(srcW, srcH));
+        const outW = Math.max(1, Math.round(srcW * scale));
+        const outH = Math.max(1, Math.round(srcH * scale));
+        const canvas = downscaleTo(img, srcW, srcH, outW, outH);
+        encodePresensi(canvas, exifSegment);
+      } catch (error) {
+        console.error('Gagal memproses foto:', error);
         setFileInfo('❌ Gagal memproses foto.');
-        return;
       }
-      const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(srcW, srcH));
-      const outW = Math.max(1, Math.round(srcW * scale));
-      const outH = Math.max(1, Math.round(srcH * scale));
-      const canvas = downscaleTo(img, srcW, srcH, outW, outH);
-      let segment: Uint8Array | null = null;
-      if (exifSegment) {
-        segment = exifSegment.slice();
-      }
-      encodePresensi(canvas, segment);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      setFileInfo('❌ Gagal memproses foto.');
+      setFileInfo('❌ Foto tidak bisa dibaca browser. Coba pilih foto JPG/PNG.');
     };
     img.src = url;
   };
@@ -372,32 +384,37 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
-      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
 
       if (typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
         return;
       }
 
-      createImageBitmap(file, { imageOrientation: 'none' }).then((bitmap) => {
-        const rawWidth = bitmap.width;
-        const rawHeight = bitmap.height;
-        if (!rawWidth || !rawHeight) {
+      let bitmapPromise: Promise<ImageBitmap>;
+      try {
+        bitmapPromise = createImageBitmap(file);
+      } catch (err) {
+        console.error(err);
+        processFileFallback(file, exifSegment);
+        return;
+      }
+
+      bitmapPromise.then((bitmap) => {
+        try {
+          const width = bitmap.width;
+          const height = bitmap.height;
+          if (!width || !height) {
+            setFileInfo('❌ Gagal memproses foto.');
+            return;
+          }
+          const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(width, height));
+          const outW = Math.max(1, Math.round(width * scale));
+          const outH = Math.max(1, Math.round(height * scale));
+          const canvas = downscaleTo(bitmap, width, height, outW, outH);
+          encodePresensi(canvas, exifSegment);
+        } finally {
           bitmap.close();
-          setFileInfo('❌ Gagal memproses foto.');
-          return;
         }
-
-        const upright = orient(bitmap, orientation);
-        bitmap.close();
-        const displayWidth = upright.width;
-        const displayHeight = upright.height;
-        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(displayWidth, displayHeight));
-        const outW = Math.max(1, Math.round(displayWidth * scale));
-        const outH = Math.max(1, Math.round(displayHeight * scale));
-
-        const display = downscaleTo(upright, displayWidth, displayHeight, outW, outH);
-        encodePresensi(display, exifSegment);
       }).catch((err) => {
         console.error(err);
         processFileFallback(file, exifSegment);
