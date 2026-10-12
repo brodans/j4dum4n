@@ -10,7 +10,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, patchExifDimensions, normalizeOrientation,
+  findExifApp1, readOrientation, orient, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
@@ -372,27 +372,31 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
+      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
 
       if (typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
         return;
       }
 
-      createImageBitmap(file).then((bitmap) => {
-        const dw = bitmap.width;
-        const dh = bitmap.height;
-        if (!dw || !dh) {
+      createImageBitmap(file, { imageOrientation: 'none' }).then((bitmap) => {
+        const rawWidth = bitmap.width;
+        const rawHeight = bitmap.height;
+        if (!rawWidth || !rawHeight) {
           bitmap.close();
           setFileInfo('❌ Gagal memproses foto.');
           return;
         }
 
-        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(dw, dh));
-        const outW = Math.max(1, Math.round(dw * scale));
-        const outH = Math.max(1, Math.round(dh * scale));
-
-        const display = downscaleTo(bitmap, dw, dh, outW, outH);
+        const upright = orient(bitmap, orientation);
         bitmap.close();
+        const displayWidth = upright.width;
+        const displayHeight = upright.height;
+        const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(displayWidth, displayHeight));
+        const outW = Math.max(1, Math.round(displayWidth * scale));
+        const outH = Math.max(1, Math.round(displayHeight * scale));
+
+        const display = downscaleTo(upright, displayWidth, displayHeight, outW, outH);
         encodePresensi(display, exifSegment);
       }).catch((err) => {
         console.error(err);

@@ -235,23 +235,17 @@ export function insertExifApp1(jpeg: Uint8Array, app1: Uint8Array): Uint8Array {
 // Orientasi piksel (kanvas)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Kembalikan piksel ke orientasi MENTAH (sesuai sensor), kebalikan dari
- * pemutaran otomatis yang dilakukan browser berdasarkan tag Orientation.
- * Terverifikasi untuk seluruh 8 nilai orientasi.
- */
-export function unorient(
+/** Terapkan tag EXIF Orientation pada piksel mentah. */
+export function orient(
   source: CanvasImageSource & { width: number; height: number },
   orientation: number,
 ): HTMLCanvasElement {
   const dw = source.width;
   const dh = source.height;
-  // Kebalikan orientasi: 6↔8, sisanya sama (semuanya involusi).
-  const inverse = orientation === 6 ? 8 : orientation === 8 ? 6 : orientation;
 
   let cw = dw;
   let ch = dh;
-  if (inverse >= 5) {
+  if (orientation >= 5 && orientation <= 8) {
     cw = dh;
     ch = dw;
   }
@@ -267,7 +261,7 @@ export function unorient(
 
   const w = dw;
   const h = dh;
-  switch (inverse) {
+  switch (orientation) {
     case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
     case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
     case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
@@ -279,6 +273,15 @@ export function unorient(
   }
   ctx.drawImage(source, 0, 0);
   return canvas;
+}
+
+/** Kembalikan piksel yang sudah diorientasikan browser ke orientasi sensor. */
+export function unorient(
+  source: CanvasImageSource & { width: number; height: number },
+  orientation: number,
+): HTMLCanvasElement {
+  const inverse = orientation === 6 ? 8 : orientation === 8 ? 6 : orientation;
+  return orient(source, inverse);
 }
 
 /** Perkecil (progresif, maks 50% per langkah) ke ukuran tepat targetW × targetH. */
