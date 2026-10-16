@@ -10,7 +10,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, patchExifDimensions, normalizeOrientation,
+  findExifApp1, isIOSDevice, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
@@ -323,8 +323,7 @@ export default function Presensi() {
     setFileInfo(`${canvas.width}×${canvas.height} px · ${(byteLength / 1024).toFixed(1)} KB`);
   };
 
-  // Fallback untuk browser tanpa createImageBitmap: gambar dianggap sudah
-  // diputar otomatis oleh browser, sehingga tag Orientation dinormalkan ke 1.
+  // HTMLImageElement lets iOS Safari apply the camera JPEG's EXIF orientation.
   const processFileFallback = (file: File, exifSegment: Uint8Array | null) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -368,7 +367,7 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
-      if (typeof createImageBitmap !== 'function') {
+      if (isIOSDevice() || typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
         return;
       }

@@ -16,6 +16,14 @@
 /** Byte awal penanda payload Exif di dalam segmen APP1. */
 const EXIF_PREFIX = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00]; // "Exif\0\0"
 
+/** iOS Safari handles camera-photo EXIF more consistently through HTMLImageElement. */
+export function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = navigator.userAgent || '';
+  return /iPhone|iPad|iPod/i.test(userAgent)
+    || (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1);
+}
+
 /** Posisi segmen APP1/Exif pertama pada sebuah JPEG (indeks awal & akhir). */
 export function findExifApp1Range(bytes: Uint8Array): { start: number; end: number } | null {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;

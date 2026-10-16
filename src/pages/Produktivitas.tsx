@@ -12,7 +12,7 @@ import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
 import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import {
-  findExifApp1, patchExifDimensions, normalizeOrientation,
+  findExifApp1, isIOSDevice, patchExifDimensions, normalizeOrientation,
   stripExifThumbnail, dataUrlToBytes, bytesToDataUrl, insertExifApp1,
 } from '../lib/exif';
 
@@ -232,13 +232,13 @@ function processPhotoFile(
       onDone(finalUrl, `✅ ${w}×${h} px · ${sizeLabel}`);
     };
 
-    // Fallback untuk browser tanpa createImageBitmap.
+    // HTMLImageElement lets iOS Safari apply the camera JPEG's EXIF orientation.
     const fallback = () => {
       const url = URL.createObjectURL(file);
       const img = new window.Image();
       img.onload = () => {
         URL.revokeObjectURL(url);
-        const w = img.width, h = img.height;
+        const w = img.naturalWidth, h = img.naturalHeight;
         if (!w || !h) { onError('❌ Gagal memproses foto.'); return; }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
@@ -254,7 +254,7 @@ function processPhotoFile(
       img.src = url;
     };
 
-    if (typeof createImageBitmap === 'function') {
+    if (!isIOSDevice() && typeof createImageBitmap === 'function') {
       let bitmapPromise: Promise<ImageBitmap>;
       try {
         bitmapPromise = createImageBitmap(file);
