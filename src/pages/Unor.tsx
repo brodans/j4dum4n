@@ -1151,7 +1151,6 @@ export default function Unor() {
                   <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-400 dark:text-slate-500 py-10">
                     <Building2 className="w-10 h-10 opacity-20" />
                     <p className="text-sm font-medium text-center">Pilih instansi dari pohon instansi</p>
-                    <p className="text-xs text-center max-w-xs text-slate-400">Klik instansi untuk melihat detail pegawai aktif, lokasi, dan unit kerjanya.</p>
                   </div>
                 )}
               </div>

@@ -820,9 +820,6 @@ export default function ReviewProduktivitas() {
             </div>
           )}
 
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-            Gunakan kotak pencarian untuk memilih atasan baik Kabid, Kabag, Kadin dll, untuk mereview semua produktivitas.
-          </p>
         </div>
 
         {/* Hidden Auto Parameters Visualizer */}

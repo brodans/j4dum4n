@@ -12,8 +12,8 @@ import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
 import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import {
-  findExifApp1, readOrientation, patchExifDimensions, normalizeOrientation,
-  stripExifThumbnail, dataUrlToBytes, bytesToDataUrl, insertExifApp1, orient,
+  findExifApp1, patchExifDimensions, normalizeOrientation,
+  stripExifThumbnail, dataUrlToBytes, bytesToDataUrl, insertExifApp1,
 } from '../lib/exif';
 
 // ─────────────────────────────────────────────
@@ -255,10 +255,9 @@ function processPhotoFile(
     };
 
     if (typeof createImageBitmap === 'function') {
-      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
       let bitmapPromise: Promise<ImageBitmap>;
       try {
-        bitmapPromise = createImageBitmap(file, { imageOrientation: 'none' });
+        bitmapPromise = createImageBitmap(file);
       } catch (err) {
         console.error(err);
         fallback();
@@ -273,11 +272,9 @@ function processPhotoFile(
             onError('❌ Gagal memproses foto.');
             return;
           }
-          const alreadyUpright = orientation >= 5 && orientation <= 8 && width < height;
-          const upright = alreadyUpright ? bitmap : orient(bitmap, orientation);
           const canvas = document.createElement('canvas');
-          canvas.width = upright.width;
-          canvas.height = upright.height;
+          canvas.width = width;
+          canvas.height = height;
           const context = canvas.getContext('2d');
           if (!context) {
             onError('❌ Gagal memproses foto.');
@@ -285,7 +282,7 @@ function processPhotoFile(
           }
           context.imageSmoothingEnabled = true;
           context.imageSmoothingQuality = 'high';
-          context.drawImage(upright, 0, 0);
+          context.drawImage(bitmap, 0, 0);
           finish(canvas);
         } finally {
           bitmap.close();
@@ -370,6 +367,11 @@ const ActiveTaskCard = memo(function ActiveTaskCard({
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     onSetCameraActive(false);
   };
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+  }, [streamRef]);
 
   const captureFromCamera = () => {
     if (!videoRef.current) return;
@@ -652,7 +654,9 @@ export default function Produktivitas() {
     filteredPegawai,
   } = usePegawaiSearch(pegawaiList, { maxResults: 50, showAllWhenEmpty: false });
 
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+  const userAgent = navigator.userAgent || '';
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
+    || (/Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1);
 
   const effectiveIdPegawai = selectedTargetPegawai?.id || selectedTargetPegawai?.id_pegawai || config.idPegawai;
 
@@ -1123,7 +1127,6 @@ export default function Produktivitas() {
                     {ongoingTasks.length} Aktivitas Berjalan
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Klik untuk detail &amp; aksi</span>
               </div>
 
               {/* Task cards */}

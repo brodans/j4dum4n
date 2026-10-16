@@ -10,7 +10,7 @@ import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
 import { dataLokasi } from '../data/data_lokasi';
 import {
-  findExifApp1, readOrientation, orient, patchExifDimensions, normalizeOrientation,
+  findExifApp1, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
 } from '../lib/exif';
 
@@ -368,8 +368,6 @@ export default function Presensi() {
     reader.onload = (e) => {
       const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
       const exifSegment = findExifApp1(bytes);
-      const orientation = exifSegment ? readOrientation(exifSegment) : 1;
-
       if (typeof createImageBitmap !== 'function') {
         processFileFallback(file, exifSegment);
         return;
@@ -377,7 +375,7 @@ export default function Presensi() {
 
       let bitmapPromise: Promise<ImageBitmap>;
       try {
-        bitmapPromise = createImageBitmap(file, { imageOrientation: 'none' });
+        bitmapPromise = createImageBitmap(file);
       } catch (err) {
         console.error(err);
         processFileFallback(file, exifSegment);
@@ -392,14 +390,12 @@ export default function Presensi() {
             setFileInfo('❌ Gagal memproses foto.');
             return;
           }
-          const alreadyUpright = orientation >= 5 && orientation <= 8 && width < height;
-          const oriented = alreadyUpright ? bitmap : orient(bitmap, orientation);
-          const displayWidth = oriented.width;
-          const displayHeight = oriented.height;
+          const displayWidth = width;
+          const displayHeight = height;
           const scale = Math.min(1, PRESENSI_LONG_SIDE / Math.max(displayWidth, displayHeight));
           const outW = Math.max(1, Math.round(displayWidth * scale));
           const outH = Math.max(1, Math.round(displayHeight * scale));
-          const canvas = downscaleTo(oriented, displayWidth, displayHeight, outW, outH);
+          const canvas = downscaleTo(bitmap, displayWidth, displayHeight, outW, outH);
           encodePresensi(canvas, exifSegment);
         } finally {
           bitmap.close();
@@ -413,7 +409,9 @@ export default function Presensi() {
     reader.readAsArrayBuffer(file);
   };
 
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+  const userAgent = navigator.userAgent || '';
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
+    || (/Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const startCamera = async () => {
@@ -936,7 +934,6 @@ export default function Presensi() {
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Tarik & lepas foto di sini</p>
-                <p className="text-xs text-slate-400 mt-1">Foto wajib potret. Hasil dikompres hingga sisi terpanjang 320 px.</p>
               </div>
             </div>
             <div className="flex justify-center gap-3 flex-wrap">

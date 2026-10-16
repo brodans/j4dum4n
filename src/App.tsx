@@ -56,7 +56,6 @@ const Unor = lazyPage('tabUnor');
 const Laporan = lazyPage('tabReport');
 
 import LoginScreen from './components/LoginScreen';
-import SettingAkunModal from './components/SettingAkunModal';
 import DeveloperInspector from './components/DeveloperInspector';
 import { db } from './lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -510,7 +509,17 @@ function MainApp({ onLogout, isDarkMode, toggleDarkMode }: { onLogout: () => voi
 
       <AnimatePresence>
         {isPinModalOpen && (
-          <SettingAkunModal onClose={() => setIsPinModalOpen(false)} />
+          <Suspense fallback={
+            <div
+              className="modal-layer fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60"
+              role="status"
+              aria-label="Memuat pengaturan akun"
+            >
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            </div>
+          }>
+            <LazySettingAkunModal onClose={() => setIsPinModalOpen(false)} />
+          </Suspense>
         )}
       </AnimatePresence>
 
@@ -518,6 +527,8 @@ function MainApp({ onLogout, isDarkMode, toggleDarkMode }: { onLogout: () => voi
     </div>
   );
 }
+
+const LazySettingAkunModal = React.lazy(() => import('./components/SettingAkunModal'));
 
 export default function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();

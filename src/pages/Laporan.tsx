@@ -693,9 +693,6 @@ export default function Laporan() {
                 <FileText className="w-8 h-8" />
               </div>
               <h4 className="text-sm font-extrabold text-slate-700 dark:text-slate-300 mt-4">Belum Ada Laporan yang Di-generate</h4>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 max-w-sm mt-1.5 leading-relaxed">
-                Tentukan tipe laporan, pilih nama pegawai atau OPD, atur tanggal cetak, kemudian klik tombol <strong className={`${reportFormat === 'xls' ? 'text-emerald-500 dark:text-emerald-400' : 'text-blue-500 dark:text-blue-400'} font-extrabold`}>Generate Report {reportFormat === 'xls' ? 'Excel' : 'PDF'}</strong> untuk menyajikan laporan.
-              </p>
             </div>
           )}
 
