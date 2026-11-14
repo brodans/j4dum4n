@@ -3,7 +3,7 @@ import { FileText, Download, ExternalLink, Users, Building2, AlertTriangle, File
 import { useAppContext } from '../context/AppContext';
 import DatePicker from '../components/ui/DatePicker';
 import { getTodayWIB } from '../lib/dateFormatter';
-import { OPD_LIST } from '../data/opd';
+import { loadOpdList } from '../data/opd';
 import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
 import { loadPegawaiSearchList } from '../lib/pegawaiData';
 
@@ -173,8 +173,8 @@ export default function Laporan() {
           }
         }
 
-        // Use all OPD from OPD_LIST (derived from data.txt)
-        const listInstansi: InstansiSelection[] = OPD_LIST.map((item: any) => ({
+        const opd = await loadOpdList();
+        const listInstansi: InstansiSelection[] = opd.map((item: any) => ({
           kode: item.kode,
           nama: item.nama
         }));

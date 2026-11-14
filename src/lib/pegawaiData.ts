@@ -5,14 +5,33 @@ let searchListPromise: Promise<ReturnType<typeof toPegawaiSearchList>> | null = 
 
 const RETRY_DELAYS_MS = [500, 1500, 4000, 10000, 30000];
 
+function decodeColumnar(data: any): PegawaiRecord[] {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.k) && Array.isArray(data.d)) {
+    const keys: string[] = data.k;
+    return data.d.map((row: any[]) => {
+      const obj: any = {};
+      for (let i = 0; i < keys.length; i++) {
+        const v = row[i];
+        if (v !== null && v !== undefined) obj[keys[i]] = v;
+      }
+      return obj;
+    });
+  }
+  return [];
+}
+
 export function loadPegawaiDatabase(): Promise<PegawaiRecord[]> {
   if (!databasePromise) {
     databasePromise = (async () => {
       let attempt = 0;
       while (true) {
-        let dataPegawai: PegawaiRecord[];
+        let dataPegawai: PegawaiRecord[] | null = null;
         try {
-          ({ dataPegawai } = await import('../data/data_pegawai'));
+          const res = await fetch('/data/pegawai.json');
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const raw = await res.json();
+          dataPegawai = decodeColumnar(raw);
         } catch (error) {
           attempt++;
           if (attempt % RETRY_DELAYS_MS.length === 0) {
@@ -28,11 +47,10 @@ export function loadPegawaiDatabase(): Promise<PegawaiRecord[]> {
         }
         return dataPegawai;
       }
-    })()
-      .catch(error => {
-        databasePromise = null;
-        throw error;
-      });
+    })().catch(error => {
+      databasePromise = null;
+      throw error;
+    });
   }
   return databasePromise;
 }

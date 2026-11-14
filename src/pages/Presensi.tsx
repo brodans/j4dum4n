@@ -8,7 +8,7 @@ import { useBackButton } from '../hooks/useBackButton';
 import { usePegawaiSearch } from '../hooks/usePegawaiSearch';
 import { getTodayWIB } from '../lib/dateFormatter';
 import { loadPegawaiDatabase, toPegawaiSearchList } from '../lib/pegawaiData';
-import { dataLokasi } from '../data/data_lokasi';
+import { loadDataLokasi } from '../data/data_lokasi';
 import {
   findExifApp1, isIOSDevice, patchExifDimensions, normalizeOrientation,
   dataUrlToBytes, bytesToDataUrl, insertExifApp1, downscaleTo,
@@ -108,7 +108,8 @@ export default function Presensi() {
     pegawaiDropdownRef: dropdownRef,
     filteredPegawai,
   } = usePegawaiSearch(pegawaiList, { maxResults: 50, showAllWhenEmpty: false });
-  const [selectedTargetLocation, setSelectedTargetLocation] = useState<any>(null); // Matched location from dataLokasi
+  const [selectedTargetLocation, setSelectedTargetLocation] = useState<any>(null);
+  const [lokasiList, setLokasiList] = useState<any[]>([]);
   const canSearchPegawai = userRole === 'admin' || (tabPermissions.allowSearchPegawai ?? false);
 
   // Camera state
@@ -253,6 +254,12 @@ export default function Presensi() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.idPegawai, selectedTargetPegawai]);
 
+  useEffect(() => {
+    let cancelled = false;
+    loadDataLokasi().then(d => { if (!cancelled) setLokasiList(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   // Load the large employee database only when this user can search it.
   useEffect(() => {
     if (!canSearchPegawai || pegawaiList.length > 0) return;
@@ -270,11 +277,11 @@ export default function Presensi() {
     setShowPegawaiDropdown(false);
     
     // Find full profile from database
-    loadPegawaiDatabase().then(fullDb => {
+    Promise.all([loadPegawaiDatabase(), loadDataLokasi()]).then(([fullDb, lokasi]) => {
       const fullUser = fullDb.find((item: any) => item.id === p.id || item.nip === p.nip);
       if (!fullUser) return;
       setSelectedTargetPegawai(fullUser);
-      setSelectedTargetLocation(findMatchingLocation(fullUser, dataLokasi));
+      setSelectedTargetLocation(findMatchingLocation(fullUser, lokasi || lokasiList));
     });
   };
 

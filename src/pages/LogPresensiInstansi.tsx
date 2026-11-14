@@ -6,7 +6,7 @@ import ImageLightbox from '../components/ui/ImageLightbox';
 import { formatCompactDateTime } from '../lib/dateFormatter';
 import LazyImage from '../components/ui/LazyImage';
 import { useBackButton } from '../hooks/useBackButton';
-import { OPD_LIST } from '../data/opd';
+import { loadOpdList, type OPD } from '../data/opd';
 
 export default function LogPresensiInstansi() {
   const { pegawai, config, instansiLogState, setInstansiLogState, tabPermissions, userRole } = useAppContext();
@@ -46,6 +46,9 @@ export default function LogPresensiInstansi() {
   // Custom Page Size Dropdown
   const [showPageSizeDropdown, setShowPageSizeDropdown] = useState(false);
   const pageSizeDropdownRef = useRef<HTMLDivElement>(null);
+  const [opdList, setOpdList] = useState<OPD[]>([]);
+
+  useEffect(() => { loadOpdList().then(setOpdList).catch(() => {}); }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -62,13 +65,13 @@ export default function LogPresensiInstansi() {
 
   // Sync selectedOPD with unorCode
   useEffect(() => {
-    const found = OPD_LIST.find(o => o.kode === unorCode);
+    const found = opdList.find(o => o.kode === unorCode);
     if (found) {
       setInstansiLogState(prev => ({ ...prev, selectedOPD: found }));
     } else {
       setInstansiLogState(prev => ({ ...prev, selectedOPD: null }));
     }
-  }, [unorCode]);
+  }, [unorCode, opdList]);
 
   // Jika tidak punya izin cari instansi lain, kunci ke instansi user sendiri
   useEffect(() => {
@@ -78,7 +81,7 @@ export default function LogPresensiInstansi() {
     }
   }, [canSearchInstansi, config.kodeInstansi, config.kodeUnor]);
 
-  const filteredOPD = OPD_LIST.filter(opd =>
+  const filteredOPD = opdList.filter(opd =>
     opd.nama.toLowerCase().includes(searchOPD.toLowerCase()) ||
     opd.kode.toLowerCase().includes(searchOPD.toLowerCase())
   );

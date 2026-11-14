@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Building2, Search, X, ChevronRight, ChevronDown,
-  Users, Layers, Filter, Info, MapPin, AlertCircle,
+  Layers, Filter, Info, MapPin, AlertCircle,
   Map as MapIcon, Check, ExternalLink
 } from 'lucide-react';
 import type { DataInstansi } from '../data/data_instansi';
@@ -9,7 +9,9 @@ import type { DataUnor } from '../data/data_unor';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useAppContext } from '../context/AppContext';
-import { loadPegawaiDatabase } from '../lib/pegawaiData';
+import { loadDataInstansi } from '../data/data_instansi';
+import { loadDataUnor } from '../data/data_unor';
+import { loadDataLokasi } from '../data/data_lokasi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,7 +124,7 @@ function buildTree(searchTerm: string, tipeFilter: string, dataInstansi: DataIns
       kode: inst.kode,
       nama: inst.nama,
       displayNama: cleanNama(inst.nama),
-      tipeSkpd: inst.tipeSkpd,
+      tipeSkpd: inst.tipeSkpd ?? null,
       instansiData: inst,
       unorList: unors,
       children: [],
@@ -312,8 +314,8 @@ function useStructureData(enabled: boolean) {
 
     setLoading(true);
     let active = true;
-    Promise.all([import('../data/data_instansi'), import('../data/data_unor')]).then(([instansiModule, unorModule]) => {
-      if (active) setData({ instansi: instansiModule.dataInstansi, unor: unorModule.dataUnor });
+    Promise.all([loadDataInstansi(), loadDataUnor()]).then(([instansi, unor]) => {
+      if (active) setData({ instansi, unor });
     }).catch(error => console.error('Gagal memuat struktur organisasi:', error))
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -328,7 +330,7 @@ function useLocationData(enabled: boolean) {
   useEffect(() => {
     if (!enabled || locations.length > 0) return;
     let active = true;
-    import('../data/data_lokasi').then(({ dataLokasi }) => {
+    loadDataLokasi().then((dataLokasi) => {
       if (active) setLocations(dataLokasi);
     }).catch(error => console.error('Gagal memuat data lokasi:', error));
     return () => { active = false; };
@@ -621,137 +623,65 @@ function TreeRow({
 
 // ─── DetailPanel ─────────────────────────────────────────────────────────────
 function DetailPanel({ node }: { node: TreeNode }) {
-  const { userRole, tabPermissions } = useAppContext();
-  const canSearchUnor = userRole === 'admin' || tabPermissions.allowSearchUnor;
-  const [unorSearch, setUnorSearch] = useState('');
-  const [pegawaiSearch, setPegawaiSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'unit' | 'pegawai'>(node.unorList.length > 0 ? 'unit' : 'pegawai');
-  const [visibleUnor, setVisibleUnor] = useState(30);
-  const [visiblePegawai, setVisiblePegawai] = useState(30);
   const [mapModal, setMapModal] = useState<any | null>(null);
-  const [pegawaiData, setPegawaiData] = useState<any[]>([]);
   const inst = node.instansiData;
-
-  useEffect(() => {
-    if (activeTab !== 'pegawai' || pegawaiData.length > 0) return;
-    let active = true;
-    loadPegawaiDatabase().then(dataPegawai => {
-      if (active) setPegawaiData(dataPegawai);
-    }).catch(error => console.error('Gagal memuat data pegawai:', error));
-    return () => { active = false; };
-  }, [activeTab, pegawaiData.length]);
-
-  React.useEffect(() => {
-    setUnorSearch(''); setVisibleUnor(30);
-    setPegawaiSearch(''); setVisiblePegawai(30);
-    setActiveTab(node.unorList.length > 0 ? 'unit' : 'pegawai');
-  }, [node.kode, node.unorList.length]);
-
-  // Pegawai aktif di instansi ini
-  const pegawaiInstansi = useMemo(() => {
-    return pegawaiData.filter((p: any) =>
-      p.kode_instansi === node.kode
-    );
-  }, [node.kode, pegawaiData]);
-
-  const filteredPegawai = useMemo(() => {
-    const t = pegawaiSearch.toLowerCase().trim();
-    if (!t) return pegawaiInstansi;
-    return pegawaiInstansi.filter((p: any) =>
-      (p.nama || '').toLowerCase().includes(t) ||
-      (p.nip || '').toLowerCase().includes(t) ||
-      (p.jabatan || '').toLowerCase().includes(t) ||
-      (p.nama_jabatan || '').toLowerCase().includes(t) ||
-      (p.status_pegawai || '').toLowerCase().includes(t)
-    );
-  }, [pegawaiInstansi, pegawaiSearch]);
-
-  const filteredUnor = useMemo(() => {
-    const t = unorSearch.toLowerCase().trim();
-    if (!t) return node.unorList;
-    return node.unorList.filter(u =>
-      (u.nama || '').toLowerCase().includes(t) ||
-      (u.srcNama || '').toLowerCase().includes(t) ||
-      (u.kode || '').toLowerCase().includes(t) ||
-      (u.eselon || '').toLowerCase().includes(t)
-    );
-  }, [node.unorList, unorSearch]);
-
   const lokasiInduk = inst?.lokasi?.find(l => l.induk === true)?.lokasi ?? inst?.lokasi?.[0]?.lokasi ?? null;
 
-  // Badge warna status pegawai
-  function statusBadge(status: string) {
-    const s = (status || '').toLowerCase();
-    if (s === 'pns') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-    if (s.includes('pppk') || s.includes('p3k')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-    if (s.includes('honorer') || s.includes('non')) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
-    return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
-  }
-
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="space-y-5">
       {/* Header instansi */}
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 rounded-xl p-4 border border-blue-100 dark:border-blue-900/50">
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 rounded-xl p-4 sm:p-5 border border-blue-100 dark:border-blue-900/50">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 dark:bg-blue-500 flex items-center justify-center shrink-0 shadow">
+          <div className="w-11 h-11 rounded-xl bg-blue-600 dark:bg-blue-500 flex items-center justify-center shrink-0 shadow">
             <Building2 className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-slate-900 dark:text-white text-base leading-tight">
-              {node.displayNama}
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono">Kode: {node.kode}</p>
-            <div className="flex flex-wrap gap-1.5 mt-2">
+            <h3 className="font-bold text-slate-900 dark:text-white text-lg leading-tight">{node.displayNama}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">Kode: {node.kode}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
               <TipeBadge tipe={node.tipeSkpd} />
               {node.children.length > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                  <Layers className="w-2.5 h-2.5" /> {node.children.length} sub-instansi
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                  <Layers className="w-3 h-3" /> {node.children.length} sub-instansi
                 </span>
               )}
-              {pegawaiInstansi.length > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
-                  <Users className="w-2.5 h-2.5" /> {pegawaiInstansi.length} pegawai
-                </span>
-              )}
-              {node.totalUnit > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                  <Layers className="w-2.5 h-2.5" /> {node.totalUnit} unit kerja
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <Layers className="w-3 h-3" /> {node.unorList.length} unit kerja
+              </span>
             </div>
           </div>
         </div>
 
-        {inst && (
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            {inst.namaTdd && (
-              <div className="bg-white/60 dark:bg-slate-800/40 rounded-lg px-3 py-2">
+        {(inst?.namaTdd || inst?.namaAnggaran || lokasiInduk) && (
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            {inst?.namaTdd && (
+              <div className="bg-white/70 dark:bg-slate-800/40 rounded-lg px-3 py-2.5">
                 <p className="text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide text-[10px]">TTD / Pejabat</p>
                 <p className="text-slate-700 dark:text-slate-200 font-semibold mt-0.5">{inst.namaTdd}</p>
-                {inst.pangkatTdd && <p className="text-slate-400 dark:text-slate-500 text-[10px]">{inst.pangkatTdd}</p>}
+                {inst.pangkatTdd && <p className="text-slate-400 dark:text-slate-500 text-[10px] mt-0.5">{inst.pangkatTdd}</p>}
               </div>
             )}
-            {inst.namaAnggaran && (
-              <div className="bg-white/60 dark:bg-slate-800/40 rounded-lg px-3 py-2">
+            {inst?.namaAnggaran && (
+              <div className="bg-white/70 dark:bg-slate-800/40 rounded-lg px-3 py-2.5">
                 <p className="text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide text-[10px]">Pengguna Anggaran</p>
                 <p className="text-slate-700 dark:text-slate-200 font-semibold mt-0.5">{inst.namaAnggaran}</p>
-                {inst.jabatanAnggaran && <p className="text-slate-400 dark:text-slate-500 text-[10px]">{inst.jabatanAnggaran}</p>}
+                {inst.jabatanAnggaran && <p className="text-slate-400 dark:text-slate-500 text-[10px] mt-0.5">{inst.jabatanAnggaran}</p>}
               </div>
             )}
             {lokasiInduk && (
-              <div className="bg-white/60 dark:bg-slate-800/40 rounded-lg px-3 py-2 sm:col-span-2">
-                <p className="text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide text-[10px] flex items-center gap-1 mb-0.5">
-                  <MapPin className="w-2.5 h-2.5" /> Lokasi Induk
+              <div className="bg-white/70 dark:bg-slate-800/40 rounded-lg px-3 py-2.5 sm:col-span-2">
+                <p className="text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide text-[10px] flex items-center gap-1 mb-1">
+                  <MapPin className="w-3 h-3" /> Lokasi Induk
                 </p>
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-slate-700 dark:text-slate-200 font-semibold">{lokasiInduk.nama}</p>
-                    {lokasiInduk.alamat && <p className="text-slate-400 dark:text-slate-500 text-[10px]">{lokasiInduk.alamat}</p>}
+                    {lokasiInduk.alamat && <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">{lokasiInduk.alamat}</p>}
                   </div>
                   {lokasiInduk.latitude && lokasiInduk.longitude && (
                     <button onClick={() => setMapModal(lokasiInduk)}
-                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-bold text-[11px] cursor-pointer shadow-sm transition-all">
-                      <MapPin className="w-3 h-3" /> Lihat Peta
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] cursor-pointer shadow-sm transition-all">
+                      <MapPin className="w-3.5 h-3.5" /> Lihat Peta
                     </button>
                   )}
                 </div>
@@ -761,149 +691,66 @@ function DetailPanel({ node }: { node: TreeNode }) {
         )}
       </div>
 
-      {/* Tab switcher: Pegawai / Unit Kerja */}
-      {(pegawaiInstansi.length > 0 || node.unorList.length > 0) && (
-        <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800/60 rounded-xl w-fit">
-          {pegawaiInstansi.length > 0 && (
-            <button onClick={() => setActiveTab('pegawai')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'pegawai' ? 'bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}>
-              <Users className="w-3.5 h-3.5" /> Pegawai ({pegawaiInstansi.length})
-            </button>
-          )}
-          {node.unorList.length > 0 && (
-            <button onClick={() => setActiveTab('unit')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'unit' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}>
-              <Layers className="w-3.5 h-3.5" /> Unit Kerja ({node.unorList.length})
-            </button>
-          )}
+      {/* Unit Kerja */}
+      <div className="bg-white dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-900/30">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-500" />
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">Unit Kerja</h4>
+          </div>
+          <span className="text-[11px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded-full">{node.unorList.length}</span>
         </div>
-      )}
 
-      {/* Tab: Pegawai */}
-      {activeTab === 'pegawai' && pegawaiInstansi.length > 0 && (
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            <input type="text" value={pegawaiSearch} disabled={!canSearchUnor}
-              onChange={e => { setPegawaiSearch(e.target.value); setVisiblePegawai(30); }}
-              placeholder="Cari nama, NIP, jabatan..."
-              className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-white focus:ring-1 focus:ring-teal-500 outline-none transition-all"
-            />
-            {pegawaiSearch && (
-              <button onClick={() => setPegawaiSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+        {node.unorList.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-slate-400 dark:text-slate-500 flex flex-col items-center gap-2">
+            <AlertCircle className="w-5 h-5 opacity-60" />
+            <span>Tidak ada data unit kerja untuk instansi ini.</span>
           </div>
-
-          <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex-1" style={{ minHeight: 0 }}>
-            <div className="grid grid-cols-[1fr_64px] sm:grid-cols-[1fr_90px_76px] text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-2 border-b border-slate-200 dark:border-slate-700">
-              <div>Nama &amp; Jabatan</div>
-              <div className="text-center">Status</div>
-              <div className="hidden sm:block text-center">Mulai</div>
-            </div>
-            <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/50 bg-white dark:bg-slate-900" style={{ maxHeight: 400 }}
-              onScroll={e => {
-                const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
-                if (scrollHeight - scrollTop <= clientHeight + 60 && visiblePegawai < filteredPegawai.length)
-                  setVisiblePegawai(p => p + 30);
-              }}>
-              {filteredPegawai.length === 0 ? (
-                <div className="px-4 py-8 text-center text-xs text-slate-400">Tidak ada pegawai ditemukan.</div>
-              ) : filteredPegawai.slice(0, visiblePegawai).map((p: any, i: number) => (
-                <div key={p.nip || i} className="grid grid-cols-[1fr_64px] sm:grid-cols-[1fr_90px_76px] px-3 py-2.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors items-start gap-1">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-800 dark:text-slate-200 leading-snug break-words">{p.nama}</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 break-words mt-0.5">{p.nama_jabatan || p.jabatan || '-'}</p>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{p.nip}</span>
-                      <span className="sm:hidden text-[9px] font-mono text-slate-400">{p.tgl_mulai ? p.tgl_mulai.slice(0, 7) : ''}</span>
-                    </div>
-                  </div>
-                  <div className="text-center pt-0.5">
-                    <span className={`inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold leading-tight ${statusBadge(p.status_pegawai)}`}>
-                      {(p.status_pegawai || '-').replace('PPPK', 'P3K')}
-                    </span>
-                  </div>
-                  <div className="hidden sm:block text-center pt-0.5">
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-                      {p.tgl_mulai ? p.tgl_mulai.slice(0, 7) : '-'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="px-3 py-1.5 text-[10px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 font-mono">
-              {Math.min(visiblePegawai, filteredPegawai.length)} / {filteredPegawai.length} pegawai ditampilkan
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab: Unit Kerja */}
-      {activeTab === 'unit' && node.unorList.length > 0 && (
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            <input type="text" value={unorSearch} disabled={!canSearchUnor}
-              onChange={e => { setUnorSearch(e.target.value); setVisibleUnor(30); }}
-              placeholder="Cari unit kerja..."
-              className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-            />
-            {unorSearch && (
-              <button onClick={() => setUnorSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex-1" style={{ minHeight: 0 }}>
-            <div className="grid grid-cols-[1fr_64px] sm:grid-cols-[80px_1fr_76px] text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-2 border-b border-slate-200 dark:border-slate-700">
-              <div className="hidden sm:block">Kode</div>
-              <div>Nama Unit</div>
-              <div className="text-center">Status</div>
-            </div>
-            <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/50 bg-white dark:bg-slate-900" style={{ maxHeight: 380 }}
-              onScroll={e => {
-                const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
-                if (scrollHeight - scrollTop <= clientHeight + 60 && visibleUnor < filteredUnor.length)
-                  setVisibleUnor(p => p + 30);
-              }}>
-              {filteredUnor.length === 0 ? (
-                <div className="px-4 py-8 text-center text-xs text-slate-400">Tidak ada unit kerja ditemukan.</div>
-              ) : filteredUnor.slice(0, visibleUnor).map(u => (
-                <div key={u.kode} className="grid grid-cols-[1fr_64px] sm:grid-cols-[80px_1fr_76px] px-3 py-2.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors items-start gap-1">
-                  <div className="hidden sm:block font-mono text-slate-400 dark:text-slate-500 text-[10px] leading-tight pt-0.5 break-all">{u.kode}</div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-700 dark:text-slate-200 leading-snug break-words">
-                      {(u.nama && u.nama !== '-') ? u.nama : (u.srcNama || '-')}
-                    </p>
-                    <p className="sm:hidden text-[10px] font-mono text-slate-400 mt-0.5">{u.kode}</p>
-                    {u.eselon && (
-                      <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold">
-                        {u.eselon}
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                  <th className="px-4 py-2.5 text-left font-semibold w-12">No</th>
+                  <th className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">Kode</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Nama Unit</th>
+                  <th className="px-4 py-2.5 text-center font-semibold whitespace-nowrap">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                {node.unorList.map((u, i) => (
+                  <tr key={u.kode || i} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 align-top">
+                    <td className="px-4 py-3 text-slate-400 dark:text-slate-500">{i + 1}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{u.kode}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 leading-snug">{(u.nama && u.nama !== '-') ? u.nama : (u.srcNama || '-')}</div>
+                      {u.eselon && (
+                        <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-semibold">
+                          {u.eselon}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${u.aktif ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                        {u.aktif ? 'Aktif' : 'Non'}
                       </span>
-                    )}
-                  </div>
-                  <div className="text-center pt-0.5">
-                    <span className={`inline-flex items-center px-1 py-0.5 rounded text-[9px] font-bold leading-tight ${u.aktif ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
-                      {u.aktif ? 'Aktif' : 'Non'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="px-3 py-1.5 text-[10px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 font-mono">
-              {Math.min(visibleUnor, filteredUnor.length)} / {filteredUnor.length} unit ditampilkan
-            </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {pegawaiInstansi.length === 0 && node.unorList.length === 0 && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs text-slate-400 dark:text-slate-500">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          Tidak ada data pegawai maupun unit kerja untuk instansi ini.
+      {/* Sub-instansi info */}
+      {node.children.length > 0 && (
+        <div className="bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 className="w-4 h-4 text-violet-500" />
+            <h4 className="text-sm font-bold text-violet-800 dark:text-violet-300">Sub-Instansi ({node.children.length})</h4>
+          </div>
+          <p className="text-xs text-violet-700/80 dark:text-violet-300/80">Pilih sub-instansi pada pohon di sebelah kiri untuk melihat detail dan unit kerjanya.</p>
         </div>
       )}
 
@@ -1046,79 +893,81 @@ export default function Unor() {
 
       {/* Tab Struktur */}
       {activeView === 'struktur' && (
-        <>
-          {/* Search & Filter */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)} disabled={!canSearchUnor}
-                placeholder="Cari nama instansi, kode, unit kerja, atau pegawai..."
-                className="w-full pl-10 pr-9 py-2.5 text-sm border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <div className="relative">
-                <button type="button" aria-haspopup="menu" aria-expanded={showFilter} onClick={() => setShowFilter(p => !p)}
-                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer ${activeFilters > 0 ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'}`}>
-                  <Filter className="w-4 h-4" /> Filter
-                  {activeFilters > 0 && <span className="bg-white text-blue-600 rounded-full w-4 h-4 text-[10px] font-bold flex items-center justify-center">{activeFilters}</span>}
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilter ? 'rotate-180' : ''}`} />
-                </button>
-                {showFilter && (
-                  <div role="menu" aria-label="Filter tipe SKPD" className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2 z-20 w-52 space-y-1">
-                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Tipe SKPD</p>
-                    {tipeOptions.map(t => (
-                      <button key={t} type="button" role="menuitemradio" aria-checked={tipeFilter === t}
-                        onClick={() => { setTipeFilter(current => current === t ? '' : t); setShowFilter(false); }}
-                        className={`w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-sm text-left cursor-pointer transition-colors ${tipeFilter === t ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
-                        {t}
-                        {tipeFilter === t && <Check className="w-4 h-4" />}
-                      </button>
-                    ))}
-                    {activeFilters > 0 && (
-                      <button onClick={() => { setTipeFilter(''); setSearch(''); setShowFilter(false); }}
-                        className="w-full text-xs text-red-500 hover:text-red-700 font-semibold text-left py-1 cursor-pointer">
-                        Hapus semua filter
-                      </button>
-                    )}
-                  </div>
+        <div className="space-y-4">
+          {/* Toolbar */}
+          <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl p-3 sm:p-4">
+            <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)} disabled={!canSearchUnor}
+                  placeholder="Cari instansi, kode, atau unit kerja..."
+                  className="w-full pl-10 pr-9 py-2.5 text-sm border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50"
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X className="w-4 h-4" />
+                  </button>
                 )}
               </div>
-              <button onClick={handleExpandAll} title="Expand semua"
-                className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600 cursor-pointer transition-all">
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              <button onClick={handleCollapseAll} title="Collapse semua"
-                className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600 cursor-pointer transition-all">
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              <div className="flex flex-wrap gap-2 items-center">
+                <div className="relative">
+                  <button type="button" aria-haspopup="menu" aria-expanded={showFilter} onClick={() => setShowFilter(p => !p)}
+                    className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer ${activeFilters > 0 ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                    <Filter className="w-4 h-4" /> Tipe SKPD
+                    {activeFilters > 0 && <span className="bg-white text-blue-600 rounded-full w-4 h-4 text-[10px] font-bold flex items-center justify-center">{activeFilters}</span>}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilter ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showFilter && (
+                    <div role="menu" aria-label="Filter tipe SKPD" className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-2 z-20 w-52 space-y-1">
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide px-1">Tipe SKPD</p>
+                      {tipeOptions.map(t => (
+                        <button key={t} type="button" role="menuitemradio" aria-checked={tipeFilter === t}
+                          onClick={() => { setTipeFilter(current => current === t ? '' : t); setShowFilter(false); }}
+                          className={`w-full flex items-center justify-between rounded-lg px-2.5 py-2 text-sm text-left cursor-pointer transition-colors ${tipeFilter === t ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                          {t}
+                          {tipeFilter === t && <Check className="w-4 h-4" />}
+                        </button>
+                      ))}
+                      {activeFilters > 0 && (
+                        <button onClick={() => { setTipeFilter(''); setSearch(''); setShowFilter(false); }}
+                          className="w-full text-xs text-red-500 hover:text-red-700 font-semibold text-left py-1 px-1 cursor-pointer">
+                          Hapus semua filter
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button onClick={handleExpandAll} title="Buka semua"
+                  className="px-3 py-2.5 rounded-xl text-sm font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-all flex items-center gap-1.5">
+                  <ChevronDown className="w-4 h-4" /> Buka
+                </button>
+                <button onClick={handleCollapseAll} title="Tutup semua"
+                  className="px-3 py-2.5 rounded-xl text-sm font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-all flex items-center gap-1.5">
+                  <ChevronRight className="w-4 h-4" /> Tutup
+                </button>
+              </div>
             </div>
+
           </div>
 
-          {/* Split Layout - desktop side-by-side, mobile stacked */}
-          <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-4">
+          {/* Layout */}
+          <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-4 items-start">
             {/* Left: Tree */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col">
-              <div className="px-3 py-2 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-blue-500" /> Pohon Instansi
+            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900 xl:sticky xl:top-4">
+              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-500" /> Daftar Instansi
                 </span>
-                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{tree.length} root</span>
+                <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">{tree.length} grup</span>
               </div>
-              <div className="overflow-y-auto bg-white dark:bg-slate-900 flex-1"
-                style={{ maxHeight: typeof window !== 'undefined' && window.innerWidth < 1024 ? 400 : 580 }}>
+              <div className="overflow-y-auto max-h-[420px] xl:max-h-[70vh]">
                 {loadingStructure ? (
-                  <div className="px-6 py-12 text-center text-xs text-slate-400">
+                  <div className="px-6 py-12 text-center text-sm text-slate-400">
                     <div className="mx-auto mb-3 h-6 w-6 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" />
                     Memuat struktur organisasi...
                   </div>
                 ) : tree.length === 0 ? (
-                  <div className="px-6 py-12 text-center text-xs text-slate-400">
+                  <div className="px-6 py-12 text-center text-sm text-slate-400">
                     Tidak ada instansi ditemukan.
                     {debouncedSearch && <button onClick={() => setSearch('')} className="block mx-auto mt-2 text-blue-500 hover:underline cursor-pointer">Hapus pencarian</button>}
                   </div>
@@ -1128,35 +977,32 @@ export default function Unor() {
                   ))
                 )}
               </div>
-              <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-400 font-mono">
-                {dataInstansi.length} instansi • {dataUnor.length} unit • Pegawai dimuat saat detail dibuka
-              </div>
             </div>
 
             {/* Right: Detail */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col min-h-[300px]">
-              <div className="px-3 py-2 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 text-blue-500" /> Detail Instansi, Pegawai &amp; Unit Kerja
+            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+              <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-500" /> Detail Instansi &amp; Unit Kerja
                 </span>
                 {selectedNode && (
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[160px]">{selectedNode.displayNama}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[240px]">{selectedNode.displayNama}</span>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-white dark:bg-slate-900"
-                style={{ maxHeight: typeof window !== 'undefined' && window.innerWidth < 1024 ? 520 : 580 }}>
+              <div className="p-4 sm:p-5">
                 {selectedNode ? (
                   <DetailPanel node={selectedNode} />
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-400 dark:text-slate-500 py-10">
-                    <Building2 className="w-10 h-10 opacity-20" />
-                    <p className="text-sm font-medium text-center">Pilih instansi dari pohon instansi</p>
+                  <div className="min-h-[320px] flex flex-col items-center justify-center gap-3 text-slate-400 dark:text-slate-500 py-12">
+                    <Building2 className="w-12 h-12 opacity-20" />
+                    <p className="text-base font-medium text-center">Pilih instansi dari daftar di samping</p>
+                    <p className="text-sm text-center max-w-md">Detail instansi dan seluruh daftar unit kerja akan ditampilkan di sini.</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
