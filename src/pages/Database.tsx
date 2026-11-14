@@ -22,6 +22,7 @@ export default function Database() {
   // States for detailed view modal
   const [selectedDetailPegawai, setSelectedDetailPegawai] = useState<any | null>(null);
   const [selectedDetailBiodata, setSelectedDetailBiodata] = useState<BiodataRecord | null>(null);
+  const [detailBiodataLoading, setDetailBiodataLoading] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // States for pegawai photo (from last presensi log)
@@ -115,17 +116,12 @@ export default function Database() {
     const detail = pegawaiDatabase.find((item: any) => item?.nip === nip) || null;
     setSelectedDetailPegawai(detail || null);
     setSelectedDetailBiodata(null);
+    setDetailBiodataLoading(!!nip);
 
-    if (nip) {
-      import('../data/database')
-        .then(({ getBiodataByNip }) => getBiodataByNip(nip))
-        .then(bio => {
-          if (biodataRequest === biodataRequestRef.current) {
-            setSelectedDetailBiodata(bio);
-          }
-        })
-        .catch(error => console.error('Gagal memuat biodata pegawai:', error));
-    }
+    // Muat data biodata dan siapkan detail bersamaan agar tampilan modal muncul utuh
+    const biodataPromise = nip
+      ? import('../data/database').then(({ getBiodataByNip }) => getBiodataByNip(nip))
+      : Promise.resolve(null);
 
     // Reset photo state and fetch latest presensi photo
     setPegawaiPhoto(null);
@@ -140,6 +136,20 @@ export default function Database() {
       setPhotoLoading(false);
       setPhotoError(true);
     }
+
+    biodataPromise
+      .then(bio => {
+        if (biodataRequest === biodataRequestRef.current) {
+          setSelectedDetailBiodata(bio);
+          setDetailBiodataLoading(false);
+        }
+      })
+      .catch(error => {
+        console.error('Gagal memuat biodata pegawai:', error);
+        if (biodataRequest === biodataRequestRef.current) {
+          setDetailBiodataLoading(false);
+        }
+      });
   };
 
   // Helper: build photo URL from lampiran value (same logic as TabLog)
@@ -287,8 +297,13 @@ export default function Database() {
         
         <div className="overflow-y-auto max-h-[500px] custom-scrollbar bg-white dark:bg-slate-800" onScroll={handleScroll}>
           {filteredData.length === 0 ? (
-            <div className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
-              {loadingPegawai ? 'Memuat database pegawai...' : pegawaiLoadError ? (
+            <div className="px-6 py-10 text-center text-slate-500 dark:text-slate-400">
+              {loadingPegawai ? (
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <div className="w-8 h-8 border-[3px] border-blue-200 dark:border-blue-800 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" />
+                  <span className="text-sm font-medium">Memuat database pegawai...</span>
+                </div>
+              ) : pegawaiLoadError ? (
                 <div className="flex flex-col items-center gap-3">
                   <span>{pegawaiLoadError}</span>
                   <button type="button" onClick={() => setLoadAttempt(attempt => attempt + 1)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
@@ -372,7 +387,7 @@ export default function Database() {
           ...(b?.riwayat_jabatan_fungsional || []).map((r: any) => ({ ...r, _jenis: 'Fungsional', nama_jabatan: r.nama_jabatan_fungsional || r.nama_jabatan || r.jabatan })),
           ...(b?.riwayat_jabatan_pelaksana || []).map((r: any) => ({ ...r, _jenis: 'Pelaksana', nama_jabatan: r.nama_jabatan_pelaksana || r.nama_jabatan || r.jabatan })),
         ];
-        const closeDetail = () => { biodataRequestRef.current += 1; setSelectedDetailPegawai(null); setSelectedDetailBiodata(null); setPegawaiPhoto(null); setPhotoLoading(false); setPhotoError(false); setPhotoMeta(null); setLightboxOpen(false); };
+        const closeDetail = () => { biodataRequestRef.current += 1; setSelectedDetailPegawai(null); setSelectedDetailBiodata(null); setDetailBiodataLoading(false); setPegawaiPhoto(null); setPhotoLoading(false); setPhotoError(false); setPhotoMeta(null); setLightboxOpen(false); };
         return (
         <>
         <div className="modal-layer fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 z-50 animate-fade-in">
@@ -390,6 +405,14 @@ export default function Database() {
             </div>
 
             <div className="p-4 sm:p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+              {detailBiodataLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 min-h-[320px]">
+                  <div className="w-10 h-10 border-[3px] border-indigo-200 dark:border-indigo-800 border-t-indigo-600 dark:border-t-indigo-400 rounded-full animate-spin" />
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Memuat data pegawai & biodata...</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 text-center">Menyiapkan informasi pegawai secara lengkap, mohon tunggu.</p>
+                </div>
+              ) : (
+                <>
               {/* Header profil */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 sm:p-5 flex flex-col sm:flex-row gap-5 items-center sm:items-start">
                 <div
@@ -601,6 +624,8 @@ export default function Database() {
                   {selectedDetailPegawai?.emei && <div>Device EMEI: <span className="select-all">{selectedDetailPegawai.emei}</span></div>}
                 </div>
               </div>
+                </>
+              )}
             </div>
 
             <div className="px-5 sm:px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end bg-white dark:bg-slate-800 shrink-0">
