@@ -5,15 +5,33 @@ let searchListPromise: Promise<ReturnType<typeof toPegawaiSearchList>> | null = 
 
 const RETRY_DELAYS_MS = [500, 1500, 4000, 10000, 30000];
 
+function resolveRefs(v: any, table: string[]): any {
+  if (v == null) return v;
+  if (Array.isArray(v)) return v.map(x => resolveRefs(x, table));
+  if (typeof v === 'object') {
+    if (typeof (v as any).$ === 'number') {
+      const s = table[(v as any).$];
+      return s !== undefined ? s : v;
+    }
+    const o: any = {};
+    for (const k in v) o[k] = resolveRefs(v[k], table);
+    return o;
+  }
+  return v;
+}
+
 function decodeColumnar(data: any): PegawaiRecord[] {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.k) && Array.isArray(data.d)) {
     const keys: string[] = data.k;
+    const table: string[] = Array.isArray(data.s) ? data.s : [];
     return data.d.map((row: any[]) => {
       const obj: any = {};
       for (let i = 0; i < keys.length; i++) {
-        const v = row[i];
-        if (v !== null && v !== undefined) obj[keys[i]] = v;
+        let v = row[i];
+        if (v == null) continue;
+        if (table.length) v = resolveRefs(v, table);
+        obj[keys[i]] = v;
       }
       return obj;
     });
