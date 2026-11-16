@@ -475,15 +475,21 @@ export default function Database() {
                   </Section>
                 )}
 
-                {b && (b.hp || b.email || b.alamat) && (
-                  <Section title="Kontak & Alamat" icon={Phone}>
-                    <div className="space-y-3 text-sm">
-                      {b.hp && <div className="flex items-start gap-2"><Phone className="w-4 h-4 mt-0.5 text-emerald-500" /><span className="font-semibold select-all">{b.hp}</span></div>}
-                      {b.email && <div className="flex items-start gap-2"><Mail className="w-4 h-4 mt-0.5 text-blue-500" /><span className="font-semibold select-all break-all">{b.email}</span></div>}
-                      {b.alamat && <div className="flex items-start gap-2"><MapPin className="w-4 h-4 mt-0.5 text-rose-500" /><span className="font-medium leading-snug">{b.alamat}</span></div>}
-                    </div>
-                  </Section>
-                )}
+                {(() => {
+                  const email = b?.email || selectedDetailPegawai?.email;
+                  const hp = b?.hp || selectedDetailPegawai?.no_hp || selectedDetailPegawai?.hp || selectedDetailPegawai?.telepon;
+                  const alamat = b?.alamat;
+                  if (!email && !hp && !alamat) return null;
+                  return (
+                    <Section title="Kontak & Alamat" icon={Phone}>
+                      <div className="space-y-3 text-sm">
+                        {hp && <div className="flex items-start gap-2"><Phone className="w-4 h-4 mt-0.5 text-emerald-500" /><span className="font-semibold select-all">{hp}</span></div>}
+                        {email && <div className="flex items-start gap-2"><Mail className="w-4 h-4 mt-0.5 text-blue-500" /><span className="font-semibold select-all break-all">{email}</span></div>}
+                        {alamat && <div className="flex items-start gap-2"><MapPin className="w-4 h-4 mt-0.5 text-rose-500" /><span className="font-medium leading-snug">{alamat}</span></div>}
+                      </div>
+                    </Section>
+                  );
+                })()}
 
                 <Section title="Kepegawaian & Jabatan" icon={DatabaseIcon}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
